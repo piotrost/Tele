@@ -1,2 +1,2 @@
 # Tele
-Routes detection in satellite imagery
+Asphalt roads detection in PlanetScope satellite imagery

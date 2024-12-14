@@ -1,3 +1,10 @@
+# custom
+/data
+/output
+/info
+/norepo
+/Q
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
