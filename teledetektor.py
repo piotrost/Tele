@@ -91,11 +91,11 @@ def band_lookup_with_objects(raster_file, features_file, band_number="all"):
             plt.title("BAND " + str(i + 1))
             plt.show()
 
-def save_with_gdal(array, raster_dataset, output_file):
+def save_with_gdal(array, raster_dataset, output_name):
     array_32 = array.astype(np.float32)
     arr_type = gdal.GDT_Float32
     driver = gdal.GetDriverByName("GTiff")
-    out_ds = driver.Create(output_file + ".tif", array_32.shape[1], array_32.shape[0], 1, arr_type)
+    out_ds = driver.Create(output_name + ".tif", array_32.shape[1], array_32.shape[0], 1, arr_type)
     out_ds.SetProjection(raster_dataset.GetProjection())
     out_ds.SetGeoTransform(raster_dataset.GetGeoTransform())
     band = out_ds.GetRasterBand(1)
@@ -103,11 +103,16 @@ def save_with_gdal(array, raster_dataset, output_file):
     band.FlushCache()
     band.ComputeStatistics(False)
 
-def save_with_cv2(array, output_file):
-    raster_norm = (array - array.min()) / (array.max() - array.min())
+def clip_rasters(model_raster, raster_list, output):
+    pass
+
+def save_with_cv2(array, output_name):
+    raster_no_nan = np.where(np.isnan(array), 0, array)
+    raster_no_inf = np.where(np.isinf(raster_no_nan), 0, raster_no_nan)
+    raster_norm = (raster_no_inf - raster_no_inf.min()) / (raster_no_inf.max() - raster_no_inf.min())
     raster_0_255 = raster_norm * 255
     raster_to_save = np.uint8(raster_0_255)
-    cv2.imwrite(output_file + ".png", raster_to_save)
+    cv2.imwrite(output_name + ".png", raster_to_save)
 
 def raster_2_band_arrays(raster_file):
     # raster
@@ -146,14 +151,12 @@ def create_index_raster(index, raster_file, output_name):
         Nir = np.float64(bands[B[8]])
         # wskaźniczek
         ind = (Nir - R) / (Nir + R)
-        ind = np.float32(ind)
     
     save_with_gdal(ind, raster_dataset, output_name)
 
     if index == "ndvi":
         ind = ind + 1
     save_with_cv2(ind, output_name)
-
 
 def calculate_raster_stats(raster_dict, features_file, output_file="output/statistics.json", generate_weights_json=False, weights_name="weights.json"):
     # the output dictionary
@@ -267,9 +270,6 @@ if __name__ == "__main__":
         "ndvi": "output/ndvi_2.tif"
     }
 
-    create_index_raster("ndvi", rasters["PlanetScope"], "output/ndvi")
+    create_index_raster("ndvi", rasters["PlanetScope"], "output/ndvi_2")
     calculate_raster_stats(rasters, objects_old, generate_weights_json=False)
-    detect(rasters, 2.50)
-            
-    
-
+    detect(rasters, 2)
