@@ -14,6 +14,8 @@ import cv2
 from rasterio.features import rasterize
 import scipy
 import json
+import os
+from osgeo import ogr
 
 # simple GDAL setting
 gdal.UseExceptions()
@@ -150,7 +152,8 @@ def create_index_raster(index, raster_file, output_name):
         R = np.float64(bands[B[6]])
         Nir = np.float64(bands[B[8]])
         # wskaźniczek
-        ind = (Nir - R) / (Nir + R)
+        epsilon = 1e-10
+        ind = (Nir - R) / (Nir + R + epsilon)
     
     save_with_gdal(ind, raster_dataset, output_name)
 
@@ -254,7 +257,83 @@ def detect(raster_dict, treshold, stats="output/statistics.json", weights="weigh
     
     # png
     save_with_cv2(processed, output_name)
+
+# ***************************************************************************
+
+def read_raster(raster_path):
+    src_ds = gdal.Open(raster_path)
+    srcband = src_ds.GetRasterBand(1)
+    array = srcband.ReadAsArray()
+    return src_ds, srcband, array
+
+def normalize_array(array):
+    raster_no_nan = np.where(np.isnan(array), 0, array)
+    raster_no_inf = np.where(np.isinf(raster_no_nan), 0, raster_no_nan)
+    raster_min = raster_no_inf.min()
+    raster_max = raster_no_inf.max()
+    epsilon = 1e-10
+    normalized_array = (raster_no_inf - raster_min) / (raster_max - raster_min + epsilon)
+    return normalized_array
+
+def create_binary_array(normalized_array):
+    binary_array = np.where(normalized_array > 0, 1, 0)
+    return binary_array
+
+def display_binary_array(binary_array):
+    plt.imshow(binary_array, cmap='gray')
+    plt.title("Binarna wersja rastra")
+    plt.colorbar(label="Wartości (0 lub 1)")
+    plt.show()
+
+def create_binary_raster(src_ds, binary_array):
+    driver = gdal.GetDriverByName("MEM")
+    binary_ds = driver.Create("", binary_array.shape[1], binary_array.shape[0], 1, gdal.GDT_Byte)
+    binary_ds.SetProjection(src_ds.GetProjection())
+    binary_ds.SetGeoTransform(src_ds.GetGeoTransform())
+    binary_band = binary_ds.GetRasterBand(1)
+    binary_band.WriteArray(binary_array)
+    binary_band.FlushCache()
+    return binary_ds, binary_band
+
+def create_shapefile(output_shapefile, binary_band):
+    drv = ogr.GetDriverByName("ESRI Shapefile")
+    if os.path.exists(output_shapefile):
+        drv.DeleteDataSource(output_shapefile)
+    dst_ds = drv.CreateDataSource(output_shapefile)
+    dst_layer = dst_ds.CreateLayer("polygons", srs=None)
+    fd = ogr.FieldDefn("DN", ogr.OFTInteger)
+    dst_layer.CreateField(fd)
+    dst_field = 0
+    gdal.Polygonize(binary_band, None, dst_layer, dst_field, [], callback=None)
+    return dst_ds
+
+def process_shapefile(output_shapefile):
+    gdf = gpd.read_file(output_shapefile)
+    gdf = gdf[gdf['DN'] != 0]
+    dissolved_gdf = gdf.dissolve(by='DN')
+    dissolved_gdf.to_file(output_shapefile)
+
+def raster_to_polygon(raster_path, output_shapefile):
+    src_ds, srcband, array = read_raster(raster_path)
+    normalized_array = normalize_array(array)
+    binary_array = create_binary_array(normalized_array)
+    display_binary_array(binary_array)
+    binary_ds, binary_band = create_binary_raster(src_ds, binary_array)
+    dst_ds = create_shapefile(output_shapefile, binary_band)
     
+    # Close datasets
+    dst_ds = None
+    src_ds = None
+    binary_ds = None
+    
+    process_shapefile(output_shapefile)
+
+def split_polygons_to_features(input_shapefile: str, output_shapefile: str):
+    gdf = gpd.read_file(input_shapefile)
+    exploded_gdf = gdf.explode(index_parts=False)
+    exploded_gdf.reset_index(drop=True, inplace=True)
+    exploded_gdf.to_file(output_shapefile)
+
 
 if __name__ == "__main__":
     objects = "data/searchers/searchers.shp"
@@ -270,6 +349,8 @@ if __name__ == "__main__":
         "ndvi": "output/ndvi_2.tif"
     }
 
-    create_index_raster("ndvi", rasters["PlanetScope"], "output/ndvi_2")
+    create_index_raster("ndvi", rasters["PlanetScope"], "output/ndvi")
     calculate_raster_stats(rasters, objects_old, generate_weights_json=False)
     detect(rasters, 2)
+    raster_to_polygon("output/detected.png", "output/drogi.shp")
+    split_polygons_to_features("output/drogi.shp", "output/drogi_rozbite.shp")
