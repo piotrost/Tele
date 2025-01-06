@@ -1,7 +1,7 @@
 # Author: Piotr Ostaszewski (325697)
 # Created: 2024-12-14T10:09:57.111Z
 
-from osgeo import gdal
+from osgeo import gdal, ogr, osr
 from typing import Union
 from pathlib import Path
 import numpy as np
@@ -15,8 +15,7 @@ from rasterio.features import rasterize
 import scipy
 import json
 import os
-from osgeo import ogr
-
+import rasterio
 # simple GDAL setting
 gdal.UseExceptions()
 
@@ -260,80 +259,51 @@ def detect(raster_dict, treshold, stats="output/statistics.json", weights="weigh
 
 # ***************************************************************************
 
-def read_raster(raster_path):
-    src_ds = gdal.Open(raster_path)
-    srcband = src_ds.GetRasterBand(1)
-    array = srcband.ReadAsArray()
-    return src_ds, srcband, array
+def normalize_raster(raster, output):
+    src = read_spatial_raster(raster)
+    band = read_raster_band(src, 1)
+    raster = read_band_as_array(band)
 
-def normalize_array(array):
-    raster_no_nan = np.where(np.isnan(array), 0, array)
+    # normalizacja do 0-1 
+    raster_no_nan = np.where(np.isnan(raster), 0, raster)
     raster_no_inf = np.where(np.isinf(raster_no_nan), 0, raster_no_nan)
-    raster_min = raster_no_inf.min()
-    raster_max = raster_no_inf.max()
-    epsilon = 1e-10
-    normalized_array = (raster_no_inf - raster_min) / (raster_max - raster_min + epsilon)
-    return normalized_array
+    raster_norm = (raster_no_inf - raster_no_inf.min()) / (raster_no_inf.max() - raster_no_inf.min())
+    raster_0_1 = np.where(raster_norm > 0, 1, 0)
+    show_grayscale_matplotlib(raster_0_1)
+    save_with_cv2(raster_0_1, output)
+    save_with_gdal(raster_0_1, src, output)
 
-def create_binary_array(normalized_array):
-    binary_array = np.where(normalized_array > 0, 1, 0)
-    return binary_array
 
-def display_binary_array(binary_array):
-    plt.imshow(binary_array, cmap='gray')
-    plt.title("Binarna wersja rastra")
-    plt.colorbar(label="Wartości (0 lub 1)")
-    plt.show()
+def create_shapefile(input_raster, output):
+    src = read_spatial_raster(input_raster)
+    band = read_raster_band(src, 1)
+    raster = read_band_as_array(band)
 
-def create_binary_raster(src_ds, binary_array):
-    driver = gdal.GetDriverByName("MEM")
-    binary_ds = driver.Create("", binary_array.shape[1], binary_array.shape[0], 1, gdal.GDT_Byte)
-    binary_ds.SetProjection(src_ds.GetProjection())
-    binary_ds.SetGeoTransform(src_ds.GetGeoTransform())
-    binary_band = binary_ds.GetRasterBand(1)
-    binary_band.WriteArray(binary_array)
-    binary_band.FlushCache()
-    return binary_ds, binary_band
+    if os.path.exists(output):
+        os.remove(output)
 
-def create_shapefile(output_shapefile, binary_band):
-    drv = ogr.GetDriverByName("ESRI Shapefile")
-    if os.path.exists(output_shapefile):
-        drv.DeleteDataSource(output_shapefile)
-    dst_ds = drv.CreateDataSource(output_shapefile)
-    dst_layer = dst_ds.CreateLayer("polygons", srs=None)
-    fd = ogr.FieldDefn("DN", ogr.OFTInteger)
-    dst_layer.CreateField(fd)
-    dst_field = 0
-    gdal.Polygonize(binary_band, None, dst_layer, dst_field, [], callback=None)
-    return dst_ds
-
-def process_shapefile(output_shapefile):
-    gdf = gpd.read_file(output_shapefile)
-    gdf = gdf[gdf['DN'] != 0]
-    dissolved_gdf = gdf.dissolve(by='DN')
-    dissolved_gdf.to_file(output_shapefile)
-
-def raster_to_polygon(raster_path, output_shapefile):
-    src_ds, srcband, array = read_raster(raster_path)
-    normalized_array = normalize_array(array)
-    binary_array = create_binary_array(normalized_array)
-    display_binary_array(binary_array)
-    binary_ds, binary_band = create_binary_raster(src_ds, binary_array)
-    dst_ds = create_shapefile(output_shapefile, binary_band)
+    # tworzymy nowy plik shapefile
+    driver = ogr.GetDriverByName("ESRI Shapefile")
+    ds = driver.CreateDataSource(output)
+    srs = osr.SpatialReference()
+    srs.ImportFromWkt(src.GetProjection())
+    layer = ds.CreateLayer("drogi", srs)
+    fd = ogr.FieldDefn("id", ogr.OFTInteger)
+    layer.CreateField(fd)
+    field = 0
+    gdal.Polygonize(band, None, layer, field, [], callback=None)
     
-    # Close datasets
-    dst_ds = None
-    src_ds = None
-    binary_ds = None
-    
-    process_shapefile(output_shapefile)
+    return ds
 
-def split_polygons_to_features(input_shapefile: str, output_shapefile: str):
-    gdf = gpd.read_file(input_shapefile)
+def change_shapefile(output):
+    gdf = gpd.read_file(output)
+    gdf = gdf[gdf['id'] != 0]
+    dissolved = gdf.dissolve(by='id')
+    dissolved.to_file(output)
+    gdf = gpd.read_file(output)
     exploded_gdf = gdf.explode(index_parts=False)
     exploded_gdf.reset_index(drop=True, inplace=True)
-    exploded_gdf.to_file(output_shapefile)
-
+    exploded_gdf.to_file(output)
 
 if __name__ == "__main__":
     objects = "data/searchers/searchers.shp"
@@ -352,5 +322,6 @@ if __name__ == "__main__":
     create_index_raster("ndvi", rasters["PlanetScope"], "output/ndvi")
     calculate_raster_stats(rasters, objects_old, generate_weights_json=False)
     detect(rasters, 2)
-    raster_to_polygon("output/detected.png", "output/drogi.shp")
-    split_polygons_to_features("output/drogi.shp", "output/drogi_rozbite.shp")
+    normalize_raster("output/detected.tif", "output/normalized")
+    create_shapefile("output/normalized.tif", "output/roads.shp")
+    change_shapefile("output/roads.shp")
