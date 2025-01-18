@@ -382,6 +382,11 @@ def buffor_sub_shapefile(input, output, buffor):
     gdf['geometry'] = gdf.buffer(-buffor)
     gdf.to_file(output)
 
+def delete_small_objects(input, output, min_area):
+    gdf = gpd.read_file(input)
+    gdf = gdf[gdf.area > min_area]
+    gdf.to_file(output)
+
 if __name__ == "__main__":
     objects = "data/searchers/searchers.shp"
     objects_old = "data/drogi_prawe/drogi_prawe.shp"
@@ -423,3 +428,5 @@ if __name__ == "__main__":
     buffor_add_shapefile("output/edges.shp", "output/edges_buffor.shp", 10)  # Poprawiona nazwa pliku
     change_shapefile("output/edges_buffor.shp")
     buffor_sub_shapefile("output/edges_buffor.shp", "output/edges_buffor_sub.shp", 10) # Poprawiona nazwa pliku
+    change_shapefile("output/edges_buffor_sub.shp")
+    delete_small_objects("output/edges_buffor_sub.shp", "output/edges_buffor_sub_del.shp", 90) # Poprawiona nazwa pliku
