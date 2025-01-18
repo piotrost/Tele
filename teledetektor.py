@@ -143,22 +143,58 @@ def pixel_objects_and_bands(raster_file, features_file):
 
     return bands, object_polygons
 
-def create_index_raster(index, raster_file, output_name):
-    raster_dataset, bands = raster_2_band_arrays(raster_file)
-    B = {band + 1 : band for band in range(0, len(bands))}
+
+def create_index_raster(index, input_raster_path, output_raster):
+    raster_dataset, bands = raster_2_band_arrays(input_raster_path)
+    B = {band + 1 : bands[band] for band in range(len(bands))}
+    coastal_blue = np.float64(B[1])
+    blue = np.float64(B[2])
+    green_i = np.float64(B[3])
+    green = np.float64(B[4])
+    yellow = np.float64(B[5])
+    red = np.float64(B[6])
+    rededge = np.float64(B[7])
+    nir = np.float64(B[8])
+
+    # Calculate the requested index
     if index == "ndvi":
-        # oficjalna numeracja kanałów PlanetScope
-        R = np.float64(bands[B[6]])
-        Nir = np.float64(bands[B[8]])
-        # wskaźniczek
-        epsilon = 1e-10
-        ind = (Nir - R) / (Nir + R + epsilon)
-    
-    save_with_gdal(ind, raster_dataset, output_name)
+        index_data = (nir - red) / (nir + red + 1e-10)
+    elif index == "ndwi":
+        index_data = (green - nir) / (green + nir + 1e-10)
+    elif index == "savi":
+        L = 0.5  # Soil adjustment factor
+        index_data = ((nir - red) * (1 + L)) / (nir + red + L + 1e-10) * (1 + L)
+    elif index == "evi":
+        G, C1, C2, L = 2.5, 6, 7.5, 1
+        index_data = G * (nir - red) / (nir + C1 * red - C2 * blue + L + 1e-10)
+    elif index == "ndre" and rededge is not None:
+        index_data = (nir - rededge) / (nir + rededge + 1e-10)
+    elif index == "ratio_nir_red":
+        index_data = nir / (red + 1e-10)
+    elif index == "difference_nir_red":
+        index_data = nir - red
+    else:
+        raise ValueError(f"Unsupported index: {index}")
+
+    save_with_gdal(index_data, raster_dataset, output_raster)
 
     if index == "ndvi":
-        ind = ind + 1
-    save_with_cv2(ind, output_name)
+        index_data = index_data + 1
+    elif index == "ndwi":
+        index_data = index_data + 2
+    elif index == "savi":
+        index_data = index_data + 3
+    elif index == "evi":
+        index_data = index_data + 4
+    elif index == "ndre":
+        index_data = index_data + 5
+    elif index == "ratio_nir_red":
+        index_data = index_data + 6
+    elif index == "difference_nir_red":
+        index_data = index_data + 7
+    
+    save_with_cv2(index_data, output_raster)
+    
 
 def calculate_raster_stats(raster_dict, features_file, output_file="output/statistics.json", generate_weights_json=False, weights_name="weights.json"):
     # the output dictionary
@@ -249,7 +285,7 @@ def detect(raster_dict, treshold, stats="output/statistics.json", weights="weigh
     
     # filter by treshold
     processed = np.where(processed > treshold, processed, 0)
-    show_grayscale_matplotlib(processed)
+    # show_grayscale_matplotlib(processed)
 
     # tif
     save_with_gdal(processed, raster_dataset, output_name)
@@ -268,10 +304,41 @@ def normalize_raster(raster, output):
     raster_no_nan = np.where(np.isnan(raster), 0, raster)
     raster_no_inf = np.where(np.isinf(raster_no_nan), 0, raster_no_nan)
     raster_norm = (raster_no_inf - raster_no_inf.min()) / (raster_no_inf.max() - raster_no_inf.min())
-    raster_0_1 = np.where(raster_norm > 0, 1, 0)
-    show_grayscale_matplotlib(raster_0_1)
+    raster_0_1 = np.where(raster_norm > 0.5, 1, 0)
+    # show_grayscale_matplotlib(raster_0_1)
     save_with_cv2(raster_0_1, output)
     save_with_gdal(raster_0_1, src, output)
+
+# wykrywamoe krawędzi dróg algorytmem Canny'ego
+def detect_and_connect_edges(input, output):
+    # Wczytanie obrazu w skali szarości
+    img = cv2.imread(input, 0)
+    
+    # Wykrywanie krawędzi algorytmem Canny'ego
+    edges = cv2.Canny(img, 100, 200)
+    
+    # Zastosowanie operacji morfologicznych
+    kernel = np.ones((5, 5), np.uint8)
+    edges_dilated = cv2.dilate(edges, kernel, iterations=1)
+    edges_closed = cv2.erode(edges_dilated, kernel, iterations=1)
+    
+    # Znajdowanie konturów
+    contours, _ = cv2.findContours(edges_closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    # Tworzenie pustego obrazu do rysowania konturów
+    connected_edges = np.zeros_like(edges)
+    
+    # Rysowanie konturów na pustym obrazie
+    cv2.drawContours(connected_edges, contours, -1, (255), thickness=cv2.FILLED)
+    
+    # Wyświetlanie obrazu krawędzi
+    show_grayscale_matplotlib(connected_edges)
+    
+    # Zapisywanie obrazu krawędzi za pomocą OpenCV
+    save_with_cv2(connected_edges, output)
+    
+    # Zapisywanie obrazu krawędzi za pomocą GDAL
+    save_with_gdal(connected_edges, read_spatial_raster(input), output)
 
 
 def create_shapefile(input_raster, output):
@@ -305,23 +372,54 @@ def change_shapefile(output):
     exploded_gdf.reset_index(drop=True, inplace=True)
     exploded_gdf.to_file(output)
 
+def buffor_add_shapefile(input, output, buffor):
+    gdf = gpd.read_file(input)
+    gdf['geometry'] = gdf.buffer(buffor)
+    gdf.to_file(output)
+
+def buffor_sub_shapefile(input, output, buffor):
+    gdf = gpd.read_file(input)
+    gdf['geometry'] = gdf.buffer(-buffor)
+    gdf.to_file(output)
+
 if __name__ == "__main__":
     objects = "data/searchers/searchers.shp"
     objects_old = "data/drogi_prawe/drogi_prawe.shp"
 
     rasters = {
         "PlanetScope": "data/grupa_1.tif",
-        "ndvi": "output/ndvi.tif"
+        "ndvi": "output/ndvi.tif",
+        "ndwi": "output/ndwi.tif",
+        "savi": "output/savi.tif",
+        "evi": "output/evi.tif",
+        "ndre": "output/ndre.tif",
+        "ratio_nir_red": "output/ratio_nir_red.tif",
+        "difference_nir_red": "output/difference_nir_red.tif"
     }
 
-    rasters_2 = {
-        "PlanetScope": "data/grupa_2.tif",
-        "ndvi": "output/ndvi_2.tif"
-    }
-
+    # Create various index rasters
     create_index_raster("ndvi", rasters["PlanetScope"], "output/ndvi")
-    calculate_raster_stats(rasters, objects_old, generate_weights_json=False)
-    detect(rasters, 2)
+    create_index_raster("ndwi", rasters["PlanetScope"], "output/ndwi")
+    create_index_raster("savi", rasters["PlanetScope"], "output/savi")
+    create_index_raster("evi", rasters["PlanetScope"], "output/evi")
+    create_index_raster("ndre", rasters["PlanetScope"], "output/ndre")
+    create_index_raster("ratio_nir_red", rasters["PlanetScope"], "output/ratio_nir_red")
+    create_index_raster("difference_nir_red", rasters["PlanetScope"], "output/difference_nir_red")
+
+    # Calculate raster statistics
+    calculate_raster_stats(rasters, objects_old, generate_weights_json=True)
+
+    rasters_to_detect = {
+        "PlanetScope": "data/grupa_1.tif",
+        # "ndvi": "output/ndvi.tif",
+        "savi": "output/savi.tif",
+    }
+
+    detect(rasters_to_detect, 2)
     normalize_raster("output/detected.tif", "output/normalized")
-    create_shapefile("output/normalized.tif", "output/roads.shp")
-    change_shapefile("output/roads.shp")
+    # detect_and_connect_edges("output/normalized.png", "output/edges")
+    create_shapefile("output/normalized.tif", "output/edges.shp")
+    change_shapefile("output/edges.shp")
+    buffor_add_shapefile("output/edges.shp", "output/edges_buffor.shp", 10)  # Poprawiona nazwa pliku
+    change_shapefile("output/edges_buffor.shp")
+    buffor_sub_shapefile("output/edges_buffor.shp", "output/edges_buffor_sub.shp", 10) # Poprawiona nazwa pliku
