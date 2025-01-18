@@ -386,6 +386,40 @@ def delete_small_objects(input, output, min_area):
     gdf = gpd.read_file(input)
     gdf = gdf[gdf.area > min_area]
     gdf.to_file(output)
+    
+def connect_nearest_polygon(input, output):
+    # Wczytaj dane wejściowe
+    gdf = gpd.read_file(input)
+    
+    # Sprawdź, czy geometrie są poprawne i napraw je, jeśli to konieczne
+    gdf['geometry'] = gdf['geometry'].buffer(0)
+
+    # Dodaj nową kolumnę, która przechowa informacje o połączeniu
+    gdf['connected'] = False
+
+    for i, row in gdf.iterrows():
+        # Znajdź najbliższy poligon
+        other_geometries = gdf.loc[gdf.index != i, 'geometry']
+        distances = other_geometries.distance(row['geometry'])
+        
+        if distances.empty:
+            continue
+        
+        # Znajdź indeks najbliższego poligonu
+        nearest_idx = distances.idxmin()
+
+        # Połącz geometrie bieżącego i najbliższego poligonu
+        nearest_geometry = gdf.loc[nearest_idx, 'geometry']
+        gdf.at[i, 'geometry'] = row['geometry'].union(nearest_geometry)
+        gdf.at[nearest_idx, 'geometry'] = row['geometry'].union(nearest_geometry)
+
+        # Oznacz oba poligony jako połączone
+        gdf.at[i, 'connected'] = True
+        gdf.at[nearest_idx, 'connected'] = True
+
+    # Zapisz dane wyjściowe do pliku
+    gdf.to_file(output, driver='ESRI Shapefile')
+
 
 if __name__ == "__main__":
     objects = "data/searchers/searchers.shp"
@@ -430,3 +464,5 @@ if __name__ == "__main__":
     buffor_sub_shapefile("output/edges_buffor.shp", "output/edges_buffor_sub.shp", 10) # Poprawiona nazwa pliku
     change_shapefile("output/edges_buffor_sub.shp")
     delete_small_objects("output/edges_buffor_sub.shp", "output/edges_buffor_sub_del.shp", 90) # Poprawiona nazwa pliku
+    change_shapefile("output/edges_buffor_sub_del.shp")
+    connect_nearest_polygon("output/edges_buffor_sub_del.shp", "output/edges_buffor_sub_del_con.shp") # Poprawiona nazwa pliku
