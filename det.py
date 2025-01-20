@@ -180,18 +180,6 @@ def create_index_raster(index, input_raster_path, output_raster):
 
     if index == "ndvi":
         index_data = index_data + 1
-    # elif index == "ndwi":
-    #     index_data = index_data + 2
-    # elif index == "savi":
-    #     index_data = index_data + 3
-    # elif index == "evi":
-    #     index_data = index_data + 4
-    # elif index == "ndre":
-    #     index_data = index_data + 5
-    # elif index == "ratio_nir_red":
-    #     index_data = index_data + 6
-    # elif index == "difference_nir_red":
-    #     index_data = index_data + 7
     
     save_with_cv2(index_data, output_raster)
     
@@ -279,7 +267,6 @@ def detect(raster_dict, treshold, stats="output/statistics.json", weights="weigh
                 range_middle = (float(w_r[0]) + float(w_r[1])) / 2
                 range_width = abs(float(w_r[0]) - float(w_r[1]))
                 new = abs((band - range_middle) / range_width + 1e-10)
-            # możemy sobie doimplementować też np. klasyfikację zerojedynkową, czy cokolwiek chcemy
 
             # 0-1 range, values outside range ommitted, multiplied by weight
             processed = processed + (np.where(new < 1, 1-new, 0)) * w["weight"]
@@ -430,30 +417,23 @@ def connect_nearest_polygon(input, output):
 def objects_area_perimeter_filter(source, input, output):
     gdf = gpd.read_file(source)
     
-    # Oblicz pole i obwód dla wszystkich poligonów na podsawie geometrii
+    # pole i obwód dla wszystkich poligonów na podsawie geometrii
     gdf['area'] = gdf['geometry'].area
     gdf['perimeter'] = gdf['geometry'].length
     gdf['area_per'] = gdf['area'] / gdf['perimeter']
 
-    # mean area_perimeter_ratio
     mean = gdf['area_per'].mean()
-
-    # get area_perimeter_ratio std
     std = gdf['area_per'].std()
 
-    print (f"Mean: {mean}, std: {std}")
-
-    # Filtruj obiekty na podstawie stosunku pola do obwodu
+    # Filtracja obiektów na podstawie stosunku pola do obwodu
     gdf2 = gpd.read_file(input)
     gdf2['area_per'] = gdf2['geometry'].area / gdf2['geometry'].length
-    gdf2 = gdf2[gdf2['area_per'] > mean - std * 1.5]
-    gdf2 = gdf2[gdf2['area_per'] < mean + std * 1.5]
+    gdf2 = gdf2[gdf2['area_per'] > mean - std * 1.78]
+    gdf2 = gdf2[gdf2['area_per'] < mean + std * 1.78]
     gdf2.to_file(output)
-
 
 if __name__ == "__main__":
     objects = "data/drogi_prawe/drogi_prawe.shp"
-    objects_2 = "data/drogi_2/drogi_2.shp"
 
     rasters = {
         "PlanetScope": "data/grupa_1.tif",
@@ -467,33 +447,26 @@ if __name__ == "__main__":
     }
 
     # Create various index rasters
-    # create_index_raster("ndvi", rasters["PlanetScope"], "output/ndvi")
-    # create_index_raster("ndwi", rasters["PlanetScope"], "output/ndwi")
-    # create_index_raster("savi", rasters["PlanetScope"], "output/savi")
-    # create_index_raster("evi", rasters["PlanetScope"], "output/evi")
-    # create_index_raster("ndre", rasters["PlanetScope"], "output/ndre")
-    # create_index_raster("ratio_nir_red", rasters["PlanetScope"], "output/ratio_nir_red")
-    # create_index_raster("difference_nir_red", rasters["PlanetScope"], "output/difference_nir_red")
+    create_index_raster("ndvi", rasters["PlanetScope"], "output/ndvi")
+    create_index_raster("ndwi", rasters["PlanetScope"], "output/ndwi")
+    create_index_raster("savi", rasters["PlanetScope"], "output/savi")
+    create_index_raster("evi", rasters["PlanetScope"], "output/evi")
+    create_index_raster("ndre", rasters["PlanetScope"], "output/ndre")
+    create_index_raster("ratio_nir_red", rasters["PlanetScope"], "output/ratio_nir_red")
+    create_index_raster("difference_nir_red", rasters["PlanetScope"], "output/difference_nir_red")
 
     # Calculate raster statistics
-    # calculate_raster_stats(rasters, objects, generate_weights_json=False)
+    calculate_raster_stats(rasters, objects, generate_weights_json=False)
 
-    # rasters_to_detect = {
-    #     "PlanetScope": "data/grupa_1.tif",
-    #     # "ndvi": "output/ndvi.tif",
-    #     "savi": "output/savi.tif",
-    # }
-
-    # detect(rasters, 10)
-    # # normalize_raster("output/detected.tif", "output/normalized")
-    # detect_and_connect_edges("output/detected", "output/edges")
-    # create_shapefile("output/edges.tif", "output/edges.shp")
-    # change_shapefile("output/edges.shp")
-    # buffor_add_shapefile("output/edges.shp", "output/edges_buffor.shp", 15)  # Poprawiona nazwa pliku
-    # change_shapefile("output/edges_buffor.shp")
-    # buffor_sub_shapefile("output/edges_buffor.shp", "output/edges_buffor_sub.shp", 10) # Poprawiona nazwa pliku
-    # change_shapefile("output/edges_buffor_sub.shp")
-    # delete_small_objects("output/edges_buffor_sub.shp", "output/edges_buffor_sub_del.shp", 2000) # Poprawiona nazwa pliku
-    # change_shapefile("output/edges_buffor_sub_del.shp")
+    detect(rasters, 10)
+    detect_and_connect_edges("output/detected", "output/edges")
+    create_shapefile("output/edges.tif", "output/edges.shp")
+    change_shapefile("output/edges.shp")
+    buffor_add_shapefile("output/edges.shp", "output/edges_buffor.shp", 15)  # Poprawiona nazwa pliku
+    change_shapefile("output/edges_buffor.shp")
+    buffor_sub_shapefile("output/edges_buffor.shp", "output/edges_buffor_sub.shp", 10) # Poprawiona nazwa pliku
+    change_shapefile("output/edges_buffor_sub.shp")
+    delete_small_objects("output/edges_buffor_sub.shp", "output/edges_buffor_sub_del.shp", 2000) # Poprawiona nazwa pliku
+    change_shapefile("output/edges_buffor_sub_del.shp")
     connect_nearest_polygon("output/edges_buffor_sub_del.shp", "output/edges_buffor_sub_del_con.shp") # Poprawiona nazwa pliku
-    objects_area_perimeter_filter(objects_2, "output/edges_buffor_sub_del_con.shp", "output/edges_filtered.shp")
+    objects_area_perimeter_filter(objects, "output/edges_buffor_sub_del_con.shp", "output/edges_area_perim.shp")
