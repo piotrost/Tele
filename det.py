@@ -458,7 +458,7 @@ if __name__ == "__main__":
     # Calculate raster statistics
     calculate_raster_stats(rasters, objects, generate_weights_json=False)
 
-    detect(rasters, 10)
+    # detect(rasters, 10)
     detect_and_connect_edges("output/detected", "output/edges")
     create_shapefile("output/edges.tif", "output/edges.shp")
     change_shapefile("output/edges.shp")
