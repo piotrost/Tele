@@ -325,7 +325,7 @@ def detect_and_connect_edges(input, output):
     edges = cv2.Canny(img, 100, 200)
     
     # Zastosowanie operacji morfologicznych
-    kernel = np.ones((5, 5), np.uint8)
+    kernel = np.ones((6, 6), np.uint8)
     edges_dilated = cv2.dilate(edges, kernel, iterations=1)
     edges_closed = cv2.erode(edges_dilated, kernel, iterations=1)
     
@@ -427,6 +427,29 @@ def connect_nearest_polygon(input, output):
     # Zapisz dane wyjściowe do pliku
     gdf.to_file(output, driver='ESRI Shapefile')
 
+def objects_area_perimeter_filter(source, input, output):
+    gdf = gpd.read_file(source)
+    
+    # Oblicz pole i obwód dla wszystkich poligonów na podsawie geometrii
+    gdf['area'] = gdf['geometry'].area
+    gdf['perimeter'] = gdf['geometry'].length
+    gdf['area_per'] = gdf['area'] / gdf['perimeter']
+
+    # mean area_perimeter_ratio
+    mean = gdf['area_per'].mean()
+
+    # get area_perimeter_ratio std
+    std = gdf['area_per'].std()
+
+    print (f"Mean: {mean}, std: {std}")
+
+    # Filtruj obiekty na podstawie stosunku pola do obwodu
+    gdf2 = gpd.read_file(input)
+    gdf2['area_per'] = gdf2['geometry'].area / gdf2['geometry'].length
+    gdf2 = gdf2[gdf2['area_per'] > mean - std * 1.5]
+    gdf2 = gdf2[gdf2['area_per'] < mean + std * 1.5]
+    gdf2.to_file(output)
+
 
 if __name__ == "__main__":
     objects = "data/drogi_prawe/drogi_prawe.shp"
@@ -461,15 +484,16 @@ if __name__ == "__main__":
     #     "savi": "output/savi.tif",
     # }
 
-    # detect(rasters, 9)
-    # normalize_raster("output/detected.tif", "output/normalized")
+    # detect(rasters, 10)
+    # # normalize_raster("output/detected.tif", "output/normalized")
     # detect_and_connect_edges("output/detected", "output/edges")
-    create_shapefile("output/edges.tif", "output/edges.shp")
-    change_shapefile("output/edges.shp")
-    buffor_add_shapefile("output/edges.shp", "output/edges_buffor.shp", 10)  # Poprawiona nazwa pliku
-    change_shapefile("output/edges_buffor.shp")
-    buffor_sub_shapefile("output/edges_buffor.shp", "output/edges_buffor_sub.shp", 10) # Poprawiona nazwa pliku
-    change_shapefile("output/edges_buffor_sub.shp")
-    delete_small_objects("output/edges_buffor_sub.shp", "output/edges_buffor_sub_del.shp", 90) # Poprawiona nazwa pliku
-    change_shapefile("output/edges_buffor_sub_del.shp")
+    # create_shapefile("output/edges.tif", "output/edges.shp")
+    # change_shapefile("output/edges.shp")
+    # buffor_add_shapefile("output/edges.shp", "output/edges_buffor.shp", 15)  # Poprawiona nazwa pliku
+    # change_shapefile("output/edges_buffor.shp")
+    # buffor_sub_shapefile("output/edges_buffor.shp", "output/edges_buffor_sub.shp", 10) # Poprawiona nazwa pliku
+    # change_shapefile("output/edges_buffor_sub.shp")
+    # delete_small_objects("output/edges_buffor_sub.shp", "output/edges_buffor_sub_del.shp", 2000) # Poprawiona nazwa pliku
+    # change_shapefile("output/edges_buffor_sub_del.shp")
     connect_nearest_polygon("output/edges_buffor_sub_del.shp", "output/edges_buffor_sub_del_con.shp") # Poprawiona nazwa pliku
+    objects_area_perimeter_filter(objects_2, "output/edges_buffor_sub_del_con.shp", "output/edges_filtered.shp")
