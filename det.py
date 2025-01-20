@@ -456,17 +456,24 @@ if __name__ == "__main__":
     create_index_raster("difference_nir_red", rasters["PlanetScope"], "output/difference_nir_red")
 
     # Calculate raster statistics
-    calculate_raster_stats(rasters, objects, generate_weights_json=False)
+    # calculate_raster_stats(rasters, objects, generate_weights_json=False)
+
+    # rasters_to_detect = {
+    #     "PlanetScope": "data/grupa_1.tif",
+    #     # "ndvi": "output/ndvi.tif",
+    #     "savi": "output/savi.tif",
+    # }
 
     # detect(rasters, 10)
-    detect_and_connect_edges("output/detected", "output/edges")
-    create_shapefile("output/edges.tif", "output/edges.shp")
-    change_shapefile("output/edges.shp")
-    buffor_add_shapefile("output/edges.shp", "output/edges_buffor.shp", 15)  # Poprawiona nazwa pliku
-    change_shapefile("output/edges_buffor.shp")
-    buffor_sub_shapefile("output/edges_buffor.shp", "output/edges_buffor_sub.shp", 15) # Poprawiona nazwa pliku
-    change_shapefile("output/edges_buffor_sub.shp")
-    delete_small_objects("output/edges_buffor_sub.shp", "output/edges_buffor_sub_del.shp", 500) # Poprawiona nazwa pliku
-    change_shapefile("output/edges_buffor_sub_del.shp")
+    # # normalize_raster("output/detected.tif", "output/normalized")
+    # detect_and_connect_edges("output/detected", "output/edges")
+    # create_shapefile("output/edges.tif", "output/edges.shp")
+    # change_shapefile("output/edges.shp")
+    # buffor_add_shapefile("output/edges.shp", "output/edges_buffor.shp", 15)  # Poprawiona nazwa pliku
+    # change_shapefile("output/edges_buffor.shp")
+    # buffor_sub_shapefile("output/edges_buffor.shp", "output/edges_buffor_sub.shp", 10) # Poprawiona nazwa pliku
+    # change_shapefile("output/edges_buffor_sub.shp")
+    # delete_small_objects("output/edges_buffor_sub.shp", "output/edges_buffor_sub_del.shp", 2000) # Poprawiona nazwa pliku
+    # change_shapefile("output/edges_buffor_sub_del.shp")
     connect_nearest_polygon("output/edges_buffor_sub_del.shp", "output/edges_buffor_sub_del_con.shp") # Poprawiona nazwa pliku
     objects_area_perimeter_filter(objects, "output/edges_buffor_sub_del_con.shp", "output/edges_area_perim.shp")
