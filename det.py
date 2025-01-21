@@ -272,12 +272,12 @@ def detect(raster_dict, treshold, stats="output/statistics.json", weights="weigh
             processed = processed + (np.where(new < 1, 1-new, 0)) * w["weight"]
 
             if w["count_type"] == "stats_range_eliminate":
-                elim = elim * np.where(new < 0.5, 1, 0)
+                elim = elim * np.where(new < 1, 1, 0)
     
     # filter by treshold
     processed = processed * elim
     processed = np.where(processed > treshold, processed, 0)
-    show_grayscale_matplotlib(processed)
+    # show_grayscale_matplotlib(processed)
 
     processed = np.where(processed > 0, 1, 0)
     show_grayscale_matplotlib(processed)
@@ -428,8 +428,8 @@ def objects_area_perimeter_filter(source, input, output):
     # Filtracja obiektów na podstawie stosunku pola do obwodu
     gdf2 = gpd.read_file(input)
     gdf2['area_per'] = gdf2['geometry'].area / gdf2['geometry'].length
-    gdf2 = gdf2[gdf2['area_per'] > mean - std * 1.78]
-    gdf2 = gdf2[gdf2['area_per'] < mean + std * 1.78]
+    gdf2 = gdf2[gdf2['area_per'] > mean - std]
+    gdf2 = gdf2[gdf2['area_per'] < mean + std]
     gdf2.to_file(output)
 
 if __name__ == "__main__":
