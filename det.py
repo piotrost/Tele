@@ -356,9 +356,9 @@ def create_shapefile(input_raster, output):
     
     return ds
 
-def change_shapefile(output):
+def change_shapefile(output, remove_id=0):
     gdf = gpd.read_file(output)
-    gdf = gdf[gdf['id'] != 0]
+    gdf = gdf[gdf['id'] != remove_id]
     dissolved = gdf.dissolve(by='id')
     dissolved.to_file(output)
     gdf = gpd.read_file(output)
@@ -432,6 +432,74 @@ def area_perimeter_filter(source, input, output):
     gdf2 = gdf2[gdf2['area_per'] < mean + std * 0.75]
     gdf2.to_file(output)
 
+def mark(reference, ref_raster, features, bufval = 10, mark_folder="output/mark"):
+    # get data pixels
+    raster_dataset, bands = raster_2_band_arrays(ref_raster)
+    band = bands[0]
+    data = np.where(band == 0, 1, 0)
+
+    # get data polygon
+    save_with_gdal(data, raster_dataset, mark_folder + "/data_polygon")
+    create_shapefile(mark_folder + "/data_polygon.tif", mark_folder + "/data_polygon.shp")
+    change_shapefile(mark_folder + "/data_polygon.shp", 1)
+
+    # Get the CRS of the raster
+    raster_proj = raster_dataset.GetProjection()
+    raster_srs = osr.SpatialReference()
+    raster_srs.ImportFromWkt(raster_proj)
+    raster_crs = raster_srs.ExportToProj4()
+
+    # Read the reference and features
+    ref = gpd.read_file(reference)
+    ref = ref.to_crs(raster_crs)
+    obj = gpd.read_file(features)
+    obj = obj.to_crs(raster_crs)
+    data_polygon = gpd.read_file(mark_folder + "/data_polygon.shp")
+
+    # asphalt
+    ref = ref[ref['MATE_NAWIE'] == 'masa bitumiczna']
+    ref = ref.dissolve(method='unary')
+
+    # buffer the reference
+    refbuf = ref.copy()
+    refbuf['geometry'] = refbuf.buffer(bufval)
+    refbuf = refbuf.dissolve(method='unary')
+
+    # get ref intersection with data_polygon
+    ref = gpd.overlay(ref, data_polygon, how='intersection')
+    ref = ref.dissolve(method='unary')
+    ref.to_file(mark_folder + "/ref.shp")
+    
+    refbuf = gpd.overlay(refbuf, data_polygon, how='intersection')
+    refbuf = refbuf.dissolve(method='unary')
+    refbuf.to_file(mark_folder + "/refbuf.shp")
+    
+    # get areas and lengths
+    ref_length = ref['geometry'].length.sum()
+    ref_buf_area = refbuf['geometry'].area.sum()
+
+    obj = obj.dissolve(method='unary')
+    objects_area = obj['geometry'].area.sum()
+
+    # intersections
+    ref_inter = gpd.overlay(ref, obj, how='intersection')
+    ref_inter = ref_inter.dissolve(method='unary')
+    ref_inter.to_file(mark_folder + "/ref_inter.shp")
+    ref_inter_length = ref_inter['geometry'].length.sum()
+
+    refbuf_inter = gpd.overlay(refbuf, obj, how='intersection')
+    refbuf_inter = refbuf_inter.dissolve(method='unary')
+    refbuf_inter.to_file(mark_folder + "/refbuf_inter.shp")
+    refbuf_inter_area = refbuf_inter['geometry'].area.sum()
+
+    # printing
+    print(f"\nFragmenty OT_SKJZ_L przecinające się z wykryciem: {ref_inter_length} m, czyli {100 * ref_inter_length / ref_length} % obiektów referencyjnych\n")
+    print(f"Fragmenty bufora OT_SKJZ_L przecinające się z wykryciem: {refbuf_inter_area} m^2, czyli {100 * refbuf_inter_area / ref_buf_area} % bufora obiektów referencyjnych\n")
+    print(f"Błędne wykrycia: {objects_area - refbuf_inter_area} m^2, czyli {100 * (objects_area - refbuf_inter_area) / objects_area} % wykrycia\n")
+    print(f"Poprawne wykrycia: {refbuf_inter_area} m^2, czyli {100 * refbuf_inter_area / objects_area} % wykrycia\n")
+
+    print(f"Razem wykrycia błędne i poprawne: {objects_area} m^2\n")
+
 if __name__ == "__main__":
     objects = "data/drogi_prawe/drogi_prawe.shp"
 
@@ -458,6 +526,7 @@ if __name__ == "__main__":
     # Calculate raster statistics
     calculate_raster_stats(rasters, objects, generate_weights_json=False)
 
+    # Detect objects
     detect(rasters, 10)
     detect_and_connect_edges("output/detected", "output/edges")
     create_shapefile("output/edges.tif", "output/edges.shp")
@@ -470,3 +539,6 @@ if __name__ == "__main__":
     change_shapefile("output/edges_buffor_sub_del.shp")
     connect_nearest_polygon("output/edges_buffor_sub_del.shp", "output/edges_buffor_sub_del_con.shp") # Poprawiona nazwa pliku
     area_perimeter_filter(objects, "output/edges_buffor_sub_del_con.shp", "output/edges_area_perim.shp")
+
+    # Mark results
+    mark("data/ot_skjz_l/ot_skjz_l.shp", "output/savi.tif", "output/edges_buffor_sub_del_con.shp", bufval=10, mark_folder="output/mark")
