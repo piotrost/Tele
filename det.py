@@ -414,7 +414,7 @@ def connect_nearest_polygon(input, output):
     # Zapisz dane wyjściowe do pliku
     gdf.to_file(output, driver='ESRI Shapefile')
 
-def objects_area_perimeter_filter(source, input, output):
+def area_perimeter_filter(source, input, output):
     gdf = gpd.read_file(source)
     
     # pole i obwód dla wszystkich poligonów na podsawie geometrii
@@ -428,8 +428,8 @@ def objects_area_perimeter_filter(source, input, output):
     # Filtracja obiektów na podstawie stosunku pola do obwodu
     gdf2 = gpd.read_file(input)
     gdf2['area_per'] = gdf2['geometry'].area / gdf2['geometry'].length
-    gdf2 = gdf2[gdf2['area_per'] > mean - std]
-    gdf2 = gdf2[gdf2['area_per'] < mean + std]
+    gdf2 = gdf2[gdf2['area_per'] > mean - std * 0.75]
+    gdf2 = gdf2[gdf2['area_per'] < mean + std * 0.75]
     gdf2.to_file(output)
 
 if __name__ == "__main__":
@@ -469,4 +469,4 @@ if __name__ == "__main__":
     delete_small_objects("output/edges_buffor_sub.shp", "output/edges_buffor_sub_del.shp", 500) # Poprawiona nazwa pliku
     change_shapefile("output/edges_buffor_sub_del.shp")
     connect_nearest_polygon("output/edges_buffor_sub_del.shp", "output/edges_buffor_sub_del_con.shp") # Poprawiona nazwa pliku
-    objects_area_perimeter_filter(objects, "output/edges_buffor_sub_del_con.shp", "output/edges_area_perim.shp")
+    area_perimeter_filter(objects, "output/edges_buffor_sub_del_con.shp", "output/edges_area_perim.shp")
