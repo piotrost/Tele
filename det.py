@@ -1,4 +1,4 @@
-# Author: Piotr Ostaszewski (325697)
+# Author: Szymon Kowalczyk (325691) && Piotr Ostaszewski (325697)
 # Created: 2024-12-14T10:09:57.111Z
 
 from osgeo import gdal, ogr, osr
