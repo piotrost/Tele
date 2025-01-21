@@ -508,9 +508,8 @@ if __name__ == "__main__":
         "ndvi": "output/ndvi.tif",
         "ndwi": "output/ndwi.tif",
         "savi": "output/savi.tif",
-        # "evi": "output/evi.tif",
         "ndre": "output/ndre.tif",
-        "ratio_nir_red": "output/ratio_nir_red.tif", # 0
+        "ratio_nir_red": "output/ratio_nir_red.tif",
         "difference_nir_red": "output/difference_nir_red.tif"
     }
 
@@ -518,7 +517,6 @@ if __name__ == "__main__":
     create_index_raster("ndvi", rasters["PlanetScope"], "output/ndvi")
     create_index_raster("ndwi", rasters["PlanetScope"], "output/ndwi")
     create_index_raster("savi", rasters["PlanetScope"], "output/savi")
-    create_index_raster("evi", rasters["PlanetScope"], "output/evi")
     create_index_raster("ndre", rasters["PlanetScope"], "output/ndre")
     create_index_raster("ratio_nir_red", rasters["PlanetScope"], "output/ratio_nir_red")
     create_index_raster("difference_nir_red", rasters["PlanetScope"], "output/difference_nir_red")
